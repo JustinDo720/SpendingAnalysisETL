@@ -40,4 +40,4 @@ def get_uploaded_files() -> List[int]:
         return uploaded_files_id
     except requests.RequestException as e:
         print(f'Failed to fetch uploaded files...')
-        return {} 
+        return [] 
