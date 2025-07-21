@@ -35,8 +35,7 @@ def get_uploaded_files() -> List[int]:
         r = requests.get(BASE_URL + '/uploads/')
         r.raise_for_status() 
         data = r.json() 
-
-        uploaded_files_id = [d['id'] for d in data]
+        uploaded_files_id = [int(d['id']) for d in data['uploaded_files']]
         return uploaded_files_id
     except requests.RequestException as e:
         print(f'Failed to fetch uploaded files...')
