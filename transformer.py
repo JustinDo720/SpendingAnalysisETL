@@ -6,6 +6,9 @@ import pandas as pd
 from google import genai
 import os
 import dotenv
+from loader import get_snowflake_connection
+import json
+import uuid
 
 dotenv.load_dotenv()
 PROD = os.getenv('PROD') == 'True'
@@ -22,6 +25,111 @@ try:
         )
 except Exception as e:
     pass 
+
+# Function to check if there's already a begin - end date report 
+def check_report_exists(begin_date, end_date, details, fi_summary):
+    """
+        We don't want to insert if the report aka summary already exists.. If there's a different begin and end date then its good to insert 
+
+        However, there's a major flaw here... What if there are more files in the middle?? 
+
+        Solution:
+        We check if begin_date and end_date exists, if it does did the transaction increase? If so we alter the current begin and end date report 
+        
+        Else Begin_date and End_date actually doesn't exist meaning this is a new report 
+    """
+    # Loading into Snowflake 
+    conn = get_snowflake_connection()
+    cursor = conn.cursor()
+
+    # Checking if begin and end date exists 
+    check_query = """
+        SELECT * FROM file_details
+        WHERE begin_date = %s and end_date = %s
+    """
+    try:
+        cursor.execute(check_query, (begin_date, end_date))
+        exists = cursor.fetchone() 
+        if exists:
+            # Check if the Transaction is less than our new Transaction counts 
+            new_transaction_cnt = details['total_transactions']
+            # Index 3 is for the Details in our tuple...
+            details_variant = json.loads(exists[3])
+            details_transactions = details_variant['total_transactions']
+
+            if new_transaction_cnt > details_transactions:
+                # One or More files were uploaded between the date range so we need to ALTER the current record 
+                # make sure our function also closes our conn + cursor after updating 
+                update_snowflake(conn, cursor, begin_date, end_date, details, fi_summary)
+            else:
+                print('No new files to update...')
+        else:
+            # Report doesnt' exists therefore we need to insert 
+            # insert_to_snowflake will close our the conn and cursor after inserting 
+            insert_to_snowflake(conn, cursor, begin_date, end_date, details, fi_summary)
+    except Exception as e:
+        print('Error Check Report')
+        print(e)
+    finally:
+        # Ensure the cursor and connection are always closed
+        cursor.close()
+        conn.close()
+
+def update_snowflake(conn, cursor, begin_date, end_date, details, fi_summary):
+    try:
+        update_query = """
+            UPDATE file_details
+            SET details = PARSE_JSON(%s), fi_summary = %s
+            WHERE begin_date = %s AND end_date = %s
+        """
+
+        cursor.execute(update_query, (
+            json.dumps(details),
+            fi_summary,
+            begin_date,
+            end_date
+        ))
+        conn.commit()
+        print("Report successfully updated.")
+    except Exception as e:
+        print('Error in updating report')
+        print(e)
+
+
+
+def insert_to_snowflake(conn, cursor, begin_date, end_date, details, fi_summary, id=str(uuid.uuid4())):
+
+    # Ideally you would have a company_name / company_id but since this is just for one big client we don't need to worrk about inserting for specific companies 
+    # https://community.snowflake.com/s/article/INSERT-using-data-in-JSON-format-fails-with-the-error-Invalid-expression-PARSEJSON
+    #
+    # Here we use IIS not IIV --> Normally we could INSERT INTO TABLE_NAME VALUES ()
+    # But since we're working with VARIANT which need PARSE_JSON() to read our json.dumps(details)....
+    # We need to do INSERT INTO TABLE_NAME SELECT 
+    insert_query = """
+        INSERT INTO file_details (id, begin_date, end_date, details, fi_summary)
+        SELECT
+        %s,
+        %s,
+        %s,
+        PARSE_JSON(%s),
+        %s
+    """
+
+    try:
+        cursor.execute(insert_query, (
+            id, 
+            begin_date,
+            end_date,
+            json.dumps(details),
+            fi_summary
+        ))
+        
+        # Committing our insert 
+        conn.commit()
+        print("✅ Inserted file details successfully.")
+    except Exception as e:
+        print('Error inserting into Snowflake')
+        print(e)
 
 
 def transform_summary() -> Dict[str, Any]:
@@ -105,8 +213,8 @@ def transform_summary() -> Dict[str, Any]:
     vendor_df = pd.DataFrame(vendor_data, columns=list(vendor_set), index=pd.to_datetime(dates))
 
     # Percent Change (Category & Vendor)
-    category_pct_change = category_df.pct_change().fillna(0).iloc[-1].to_dict()
-    vendor_pct_change = vendor_df.pct_change().fillna(0).iloc[-1].to_dict()
+    category_pct_change = category_df.pct_change().fillna(0).round(2).iloc[-1].to_dict()
+    vendor_pct_change = vendor_df.pct_change().fillna(0).round(2).iloc[-1].to_dict()
 
     # Average (Mean) (Category & Vendor)
     category_avg = category_df.mean().round(2).to_dict()
@@ -166,7 +274,110 @@ def transform_summary() -> Dict[str, Any]:
     finally:
         response['fi_summary'] = ai_fi_summary
 
+    # Inserting into our Snowflake Schema 
+    details = {k:v for k,v in response.items() if k not in ['begin_date', 'end_date', 'fi_summary']}
+    check_report_exists(response['begin_date'], response['end_date'], details, response['fi_summary'])
     return response
 
-resp = transform_summary()
-print(resp)
+details = {
+  "total_spent": 41626.36,
+  "total_transactions": 150,
+  "unique_categories": [
+    "dining",
+    "entertainment",
+    "groceries",
+    "healthcare",
+    "shopping",
+    "transportation",
+    "utilities"
+  ],
+  "unique_vendors": [
+    "Amazon",
+    "Apple",
+    "CVS",
+    "Costco",
+    "Lyft",
+    "Netflix",
+    "Starbucks",
+    "Target",
+    "Uber",
+    "Walmart"
+  ],
+  "spending_per_category": {
+    "healthcare": 2987.99,
+    "groceries": 5016.26,
+    "transportation": 5245.48,
+    "dining": 5866.95,
+    "utilities": 7004.15,
+    "entertainment": 7535.22,
+    "shopping": 7970.31
+  },
+  "pct_change_category": {
+    "groceries": 0.01,
+    "healthcare": 0.01,
+    "entertainment": 0.01,
+    "utilities": 0.01,
+    "dining": 0.01,
+    "shopping": 0.01,
+    "transportation": 0.01
+  },
+  "avg_category": {
+    "groceries": 2656.77,
+    "healthcare": 2511.74,
+    "entertainment": 2334.72,
+    "utilities": 1955.65,
+    "dining": 1748.49,
+    "shopping": 1672.09,
+    "transportation": 996.0
+  },
+  "spending_per_vendor": {
+    "Target": 150.3,
+    "Uber": 923.35,
+    "Lyft": 1598.87,
+    "Walmart": 3305.34,
+    "CVS": 3316.66,
+    "Amazon": 3413.65,
+    "Netflix": 6063.13,
+    "Costco": 6093.96,
+    "Starbucks": 8138.76,
+    "Apple": 8622.34
+  },
+  "pct_change_vendor": {
+    "Starbucks": 0.01,
+    "Target": 0.01,
+    "CVS": 0.01,
+    "Walmart": 0.01,
+    "Uber": 0.01,
+    "Apple": 0.01,
+    "Costco": 0.01,
+    "Lyft": 0.01,
+    "Amazon": 0.01,
+    "Netflix": 0.01
+  },
+  "avg_vendor": {
+    "Starbucks": 2874.11,
+    "Target": 2712.92,
+    "CVS": 2031.32,
+    "Walmart": 2021.04,
+    "Uber": 1137.88,
+    "Apple": 1105.55,
+    "Costco": 1101.78,
+    "Lyft": 532.96,
+    "Amazon": 307.78,
+    "Netflix": 50.1
+  },
+  "top_5_vendors": {
+    "Target": 150.3,
+    "Uber": 923.35,
+    "Lyft": 1598.87,
+    "Walmart": 3305.34,
+    "CVS": 3316.66
+  },
+}
+
+begin_date = "2024-07-19"
+end_date = "2025-07-01"
+fi_summary = "From 2024-07-19 to 2025-07-01, total spending amounted to $41,626.36 across 150 transactions. While all spending categories and vendors experienced a nominal 1% increase compared to the previous period, some areas require attention. \"Shopping\" ($7,970.31), \"Entertainment\" ($7,535.22), and \"Utilities\" ($7,004.15) represent the highest spending categories, suggesting potential areas for cost optimization. Vendor spending is heavily concentrated with \"Apple\" ($8,622.34) and \"Starbucks\" ($8,138.76) leading expenditures. The high concentration of spending within a few categories and vendors warrants further investigation to determine if strategic sourcing or negotiation opportunities exist."
+# check_report_exists(begin_date, end_date, details, fi_summary)
+
+transform_summary()
