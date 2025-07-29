@@ -128,3 +128,65 @@ Difference in **Categorical Shapes** could crash this program.
 - GET request to view summaries 
 
 **Overall Objective**: **FastAPI queries to see a summary report during that period**
+
+
+**07/28/25**
+- Plan
+  - FastAPI Implementation querying Snowflake for summary reports 
+  - Dagster as orchestration tool 
+- FastAPI Endpoint
+  - Shows all the existing Date Ranges for gnerated summary and details throughout the periods 
+  - Queries Snowflake for *details* + *financial summary* 
+- Set Up Dagster Pipeline to launch 
+- `pip install dagster dagster-webserver dagster-dg-cli`
+- Dagster Process
+  - 1) Set up Dagster Job [dagster_pipeline.py](pipelines/dagster_pipeline.py)
+  - Make sure we have our script in pipelines directory 
+  - Be sure its a **python directory** meaning we have `__init__.py` as well
+  - Create a `pyproject.toml` because of error: `Error: No arguments given and no [tool.dagster] block in pyproject.toml found.`
+
+*pyproject.toml*
+
+```toml
+[tool.dagster]
+module_name = "pipelines"
+```
+1) We put `"pipelines"` because thats the python directory that holds our ops and jobs
+
+
+**Exposing Jobs to Dagster** 
+
+`pipelines/__init__.py`
+
+```py
+from dagster import Definitions 
+from .dagster_pipeline import summary_job 
+
+# Adding Job to Definitions 
+# Then we could run dagster dev
+defs = Definitions(jobs=[summary_job])
+
+```
+
+**Running up Dagster UI**
+
+`dagster dev`
+
+**07/29/25**
+- Dagster Daemon to schedule my jobs (Found on the Deployment tab on dagster dev)
+- Make a crontab scheduler similar to Django Celery 
+- Add the scheduler to our definitions then toggle it in **Automation** tab 
+
+```py
+# pipelines/dagster_pipline.py
+# Crontab scheduling 
+summary_schedule = ScheduleDefinition(
+    job=summary_job,
+    cron_schedule="*/5 * * * *", # every 5 minutes 
+    execution_timezone='US/Eastern',
+    name='summary_job_schedule'
+)
+
+# pipelines/__init__.py
+defs = Definitions(jobs=[summary_job], schedules=[summary_schedule])
+```

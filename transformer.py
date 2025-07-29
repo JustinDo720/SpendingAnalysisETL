@@ -380,4 +380,4 @@ end_date = "2025-07-01"
 fi_summary = "From 2024-07-19 to 2025-07-01, total spending amounted to $41,626.36 across 150 transactions. While all spending categories and vendors experienced a nominal 1% increase compared to the previous period, some areas require attention. \"Shopping\" ($7,970.31), \"Entertainment\" ($7,535.22), and \"Utilities\" ($7,004.15) represent the highest spending categories, suggesting potential areas for cost optimization. Vendor spending is heavily concentrated with \"Apple\" ($8,622.34) and \"Starbucks\" ($8,138.76) leading expenditures. The high concentration of spending within a few categories and vendors warrants further investigation to determine if strategic sourcing or negotiation opportunities exist."
 # check_report_exists(begin_date, end_date, details, fi_summary)
 
-transform_summary()
+# transform_summary()
