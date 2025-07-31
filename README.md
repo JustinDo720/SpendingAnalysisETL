@@ -4,6 +4,10 @@
 
 Microservice to **extract** data from our Django Restapi, **transform** our data (maybe include Vertex AI for more insightful data) and **load** into *Snowflake*.
 
+**Snowflake Dagster Data Pipeline ETL Demo:**
+<img src='snowflake_dagster_pipeline.gif'> 
+
+
 ## Development 
 
 **07/18/25**
@@ -190,3 +194,24 @@ summary_schedule = ScheduleDefinition(
 # pipelines/__init__.py
 defs = Definitions(jobs=[summary_job], schedules=[summary_schedule])
 ```
+
+<img src='dagster_job_automation.png'>
+
+
+**Future Notes**
+1) Currently this only works with the same category + vendors
+   1) Practice Pandas --> Rework the script for vectorization across dataframes
+2) Dagster Pipeline is local can we push this to production?
+   1) Containerize --> Push to VM q
+3) How useful will thie API be to our React Frontend?
+   1) We could showcase the Financial Summary on the front 
+   2) Display the financial data across given time ranges 
+
+**07/30/25**
+1) Fixed Pandas Script for dynamic vendors & categories 
+   1) Instead of appending data to an array which is all based on positioning and index
+   2) We used a hashmap with vendor/category as key 
+   3) Fillna our dataframes for better vectorization if row doesnt have that vendor/cateogry 
+
+# Demo
+<img src='snowflake_dagster_pipeline.gif'> 

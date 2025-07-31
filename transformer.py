@@ -187,30 +187,35 @@ def transform_summary() -> Dict[str, Any]:
         total_transactions += summary.get('total_transactions', 0)
         
         # Looping through category 
-        category_row = []
+        # 
+        # Instead of using an array we use a dictionary so we increment the right key
+        # This solves the problem of different vendors and categories because they'll be
+        # their own seperate key and value 
+        category_row = defaultdict(float)
         for category, amount in summary['spending_per_category'].items():
             category_total[category] += round(float(amount),2)
             category_set.add(category)
-            category_row.append(amount)
+            category_row[category] += amount
         
-        vendor_row = []
+        vendor_row = defaultdict(float)
         # Looping through vendor 
         for vendor, amount in summary['spending_per_vendor'].items():
             vendor_total[vendor] += round(float(amount),2)
             vendor_set.add(vendor)
-            vendor_row.append(amount)
+            vendor_row[vendor] += amount 
 
         # Adding the rows into our main array to generate a DF for averaging 
-        category_data.append(category_row)
-        vendor_data.append(vendor_row)
+        category_data.append(dict(category_row))
+        vendor_data.append(dict(vendor_row))
         dates.append(datetime.strptime(summary.get('end_date', None), date_format).date())
 
     sorted_category_total = sorted(category_total.items(), key=lambda cat: cat[1])
     sorted_vendor_total = sorted(vendor_total.items(), key=lambda vendor: vendor[1])
 
     # Dataframe for averaging + insightful details for our AI 
-    category_df = pd.DataFrame(category_data, columns=list(category_set), index=pd.to_datetime(dates))
-    vendor_df = pd.DataFrame(vendor_data, columns=list(vendor_set), index=pd.to_datetime(dates))
+    # We don't need to specify the columns because our data is an array of dictionaries (Key: Value) where the key will be the column name
+    category_df = pd.DataFrame(category_data, index=pd.to_datetime(dates)).fillna(0)
+    vendor_df = pd.DataFrame(vendor_data, index=pd.to_datetime(dates)).fillna(0)
 
     # Percent Change (Category & Vendor)
     category_pct_change = category_df.pct_change().fillna(0).round(2).iloc[-1].to_dict()
@@ -278,106 +283,3 @@ def transform_summary() -> Dict[str, Any]:
     details = {k:v for k,v in response.items() if k not in ['begin_date', 'end_date', 'fi_summary']}
     check_report_exists(response['begin_date'], response['end_date'], details, response['fi_summary'])
     return response
-
-details = {
-  "total_spent": 41626.36,
-  "total_transactions": 150,
-  "unique_categories": [
-    "dining",
-    "entertainment",
-    "groceries",
-    "healthcare",
-    "shopping",
-    "transportation",
-    "utilities"
-  ],
-  "unique_vendors": [
-    "Amazon",
-    "Apple",
-    "CVS",
-    "Costco",
-    "Lyft",
-    "Netflix",
-    "Starbucks",
-    "Target",
-    "Uber",
-    "Walmart"
-  ],
-  "spending_per_category": {
-    "healthcare": 2987.99,
-    "groceries": 5016.26,
-    "transportation": 5245.48,
-    "dining": 5866.95,
-    "utilities": 7004.15,
-    "entertainment": 7535.22,
-    "shopping": 7970.31
-  },
-  "pct_change_category": {
-    "groceries": 0.01,
-    "healthcare": 0.01,
-    "entertainment": 0.01,
-    "utilities": 0.01,
-    "dining": 0.01,
-    "shopping": 0.01,
-    "transportation": 0.01
-  },
-  "avg_category": {
-    "groceries": 2656.77,
-    "healthcare": 2511.74,
-    "entertainment": 2334.72,
-    "utilities": 1955.65,
-    "dining": 1748.49,
-    "shopping": 1672.09,
-    "transportation": 996.0
-  },
-  "spending_per_vendor": {
-    "Target": 150.3,
-    "Uber": 923.35,
-    "Lyft": 1598.87,
-    "Walmart": 3305.34,
-    "CVS": 3316.66,
-    "Amazon": 3413.65,
-    "Netflix": 6063.13,
-    "Costco": 6093.96,
-    "Starbucks": 8138.76,
-    "Apple": 8622.34
-  },
-  "pct_change_vendor": {
-    "Starbucks": 0.01,
-    "Target": 0.01,
-    "CVS": 0.01,
-    "Walmart": 0.01,
-    "Uber": 0.01,
-    "Apple": 0.01,
-    "Costco": 0.01,
-    "Lyft": 0.01,
-    "Amazon": 0.01,
-    "Netflix": 0.01
-  },
-  "avg_vendor": {
-    "Starbucks": 2874.11,
-    "Target": 2712.92,
-    "CVS": 2031.32,
-    "Walmart": 2021.04,
-    "Uber": 1137.88,
-    "Apple": 1105.55,
-    "Costco": 1101.78,
-    "Lyft": 532.96,
-    "Amazon": 307.78,
-    "Netflix": 50.1
-  },
-  "top_5_vendors": {
-    "Target": 150.3,
-    "Uber": 923.35,
-    "Lyft": 1598.87,
-    "Walmart": 3305.34,
-    "CVS": 3316.66
-  },
-}
-
-begin_date = "2024-07-19"
-end_date = "2025-07-01"
-fi_summary = "From 2024-07-19 to 2025-07-01, total spending amounted to $41,626.36 across 150 transactions. While all spending categories and vendors experienced a nominal 1% increase compared to the previous period, some areas require attention. \"Shopping\" ($7,970.31), \"Entertainment\" ($7,535.22), and \"Utilities\" ($7,004.15) represent the highest spending categories, suggesting potential areas for cost optimization. Vendor spending is heavily concentrated with \"Apple\" ($8,622.34) and \"Starbucks\" ($8,138.76) leading expenditures. The high concentration of spending within a few categories and vendors warrants further investigation to determine if strategic sourcing or negotiation opportunities exist."
-# check_report_exists(begin_date, end_date, details, fi_summary)
-
-# transform_summary()
